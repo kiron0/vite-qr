@@ -1,0 +1,68 @@
+{
+  "name": "vite-qr",
+  "version": "1.0.0",
+  "description": "QR code generator for LAN URLs in Vite dev server",
+  "source": "src/index.ts",
+  "main": "dist/require.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "require": "./dist/require.js",
+      "import": "./dist/index.mjs",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,css,mjs}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.1.0",
+    "commander": "^14.0.3",
+    "typescript": "^5.9.3",
+    "uqr": "^0.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "prettier": "^3.8.1",
+    "terser": "^5.46.0",
+    "tsup": "^8.5.1",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.0"
+  },
+  "keywords": [
+    "vite",
+    "qrcode",
+    "dev",
+    "lan",
+    "mobile",
+    "local-network"
+  ],
+  "author": "Toufiq Hasan Kiron",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kiron0/vite-qr"
+  },
+  "bugs": {
+    "url": "https://github.com/kiron0/vite-qr/issues"
+  },
+  "homepage": "https://viteqr.js.org",
+  "peerDependencies": {
+    "vite": ">=5.0.0"
+  },
+  "bin": {
+    "vite-qr": "./dist/cli/index.js"
+  }
+}
