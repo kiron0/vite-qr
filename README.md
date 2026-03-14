@@ -65,6 +65,8 @@ By default it prints once when the Vite dev server starts listening.
 
 When `once: false` is passed, it also prints again on file changes while the dev server is still running.
 
+When Vite exposes canonical resolved network URLs, `vite-qr` prefers those so printed QR targets keep the effective dev-server base path and origin.
+
 The plugin resolves the effective protocol in this order:
 
 - `options.protocol`
@@ -95,11 +97,12 @@ Notes:
 
 - `enabled` disables the integration
 - `once` defaults to `true`
-- `path` is optional and usually stays at the root
+- `path` is optional and usually stays at the root; when set, it overrides the printed URL path
 - `protocol` defaults to the Vite server protocol, then `"http"`
-- `hostFamily` defaults to `"ipv4"`
-- `includeHosts` and `excludeHosts` match raw interface addresses before URLs are built
-- `preferInterface` changes ordering and the recommended URL
+- `hostFamily` defaults to `"ipv4"` and affects local interface discovery
+- `includeHosts` and `excludeHosts` match raw interface addresses discovered from local network interfaces
+- `preferInterface` influences local interface ordering and helps order resolved Vite URLs when available
+- `filter` runs on the final printed URLs
 
 ## Examples
 
@@ -144,7 +147,7 @@ Creates a Vite dev-server plugin and prints QR codes when the server is listenin
 
 ### `printQRCodes(port, options?)`
 
-Prints URLs and QR codes immediately and returns the generated URLs.
+Prints URLs and QR codes immediately from local interface discovery and returns the generated URLs.
 
 ### `getLocalNetworkUrls(port, options?)`
 
