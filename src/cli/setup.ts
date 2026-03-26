@@ -64,7 +64,10 @@ function readPackageJson(packageJsonPath: string): PackageJsonData | null {
   }
 }
 
-function getDependencyVersionFromPackageJson(pkg: PackageJsonData | null, dependencyName: string): string | null {
+function getDependencyVersionFromPackageJson(
+  pkg: PackageJsonData | null,
+  dependencyName: string
+): string | null {
   return pkg?.dependencies?.[dependencyName] ?? pkg?.devDependencies?.[dependencyName] ?? null;
 }
 
@@ -92,7 +95,13 @@ function getScriptKind(filePath: string): ts.ScriptKind {
 }
 
 function createSourceFile(filePath: string, source: string): ts.SourceFile {
-  return ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, getScriptKind(filePath));
+  return ts.createSourceFile(
+    filePath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    getScriptKind(filePath)
+  );
 }
 
 function isNamedAccess(node: ts.Node, name: string): boolean {
@@ -104,7 +113,9 @@ function isNamedAccess(node: ts.Node, name: string): boolean {
   );
 }
 
-function isViteQrRequireCall(expression: ts.Expression | undefined): expression is ts.CallExpression {
+function isViteQrRequireCall(
+  expression: ts.Expression | undefined
+): expression is ts.CallExpression {
   return (
     expression !== undefined &&
     ts.isCallExpression(expression) &&
@@ -224,7 +235,7 @@ function resolveExpression(
   expression: BindingValue,
   bindings: ExpressionBindings,
   visited = new Set<string>()
-) : BindingValue {
+): BindingValue {
   expression = unwrapExpression(expression);
 
   if (!ts.isIdentifier(expression)) {
@@ -299,7 +310,11 @@ function extractConfigObjectFromExpression(
     return resolved;
   }
 
-  if (ts.isArrowFunction(resolved) || ts.isFunctionExpression(resolved) || ts.isFunctionDeclaration(resolved)) {
+  if (
+    ts.isArrowFunction(resolved) ||
+    ts.isFunctionExpression(resolved) ||
+    ts.isFunctionDeclaration(resolved)
+  ) {
     return extractObjectLiteralFromFunction(resolved, bindings);
   }
 
@@ -370,12 +385,16 @@ function getConfigObjectTarget(source: string, filePath: string): ObjectTarget |
 
     if (!ts.isExpressionStatement(statement)) continue;
     const expression = statement.expression;
-    if (!ts.isBinaryExpression(expression) || expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
+    if (
+      !ts.isBinaryExpression(expression) ||
+      expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken
+    ) {
       continue;
     }
 
     const left = expression.left;
-    const isCjsExport = isModuleExports(left) || isExportsDefault(left) || isModuleExportsDefault(left);
+    const isCjsExport =
+      isModuleExports(left) || isExportsDefault(left) || isModuleExportsDefault(left);
 
     if (!isCjsExport) continue;
 
@@ -397,7 +416,10 @@ function detectExistingBinding(sourceFile: ts.SourceFile): ViteQRCodeBinding {
 
   for (const statement of sourceFile.statements) {
     if (ts.isImportDeclaration(statement)) {
-      if (!ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== 'vite-qr') {
+      if (
+        !ts.isStringLiteral(statement.moduleSpecifier) ||
+        statement.moduleSpecifier.text !== 'vite-qr'
+      ) {
         continue;
       }
 
@@ -442,13 +464,14 @@ function detectExistingBinding(sourceFile: ts.SourceFile): ViteQRCodeBinding {
         }
       }
 
-      if (
-        ts.isObjectBindingPattern(declaration.name) &&
-        isViteQrRequireCall(initializer)
-      ) {
+      if (ts.isObjectBindingPattern(declaration.name) && isViteQrRequireCall(initializer)) {
         for (const element of declaration.name.elements) {
-          const propertyName = element.propertyName?.getText(sourceFile) ?? element.name.getText(sourceFile);
-          if ((propertyName === 'default' || propertyName === 'viteQRCode') && ts.isIdentifier(element.name)) {
+          const propertyName =
+            element.propertyName?.getText(sourceFile) ?? element.name.getText(sourceFile);
+          if (
+            (propertyName === 'default' || propertyName === 'viteQRCode') &&
+            ts.isIdentifier(element.name)
+          ) {
             if (propertyName === 'default') {
               defaultImport = element.name.text;
               continue;
@@ -663,7 +686,8 @@ function prependImport(source: string, filePath: string, importLine: string): st
   let insertPos = 0;
 
   for (const statement of sourceFile.statements) {
-    const isDirective = ts.isExpressionStatement(statement) && ts.isStringLiteral(statement.expression);
+    const isDirective =
+      ts.isExpressionStatement(statement) && ts.isStringLiteral(statement.expression);
     const isRequireVar =
       ts.isVariableStatement(statement) &&
       statement.declarationList.declarations.some((declaration) => {
@@ -691,7 +715,10 @@ function prependImport(source: string, filePath: string, importLine: string): st
   return `${source.slice(0, insertPos)}\n${importLine}${source.slice(insertPos)}`;
 }
 
-function detectInnerIndent(objectLiteral: ts.ObjectLiteralExpression, sourceFile: ts.SourceFile): string {
+function detectInnerIndent(
+  objectLiteral: ts.ObjectLiteralExpression,
+  sourceFile: ts.SourceFile
+): string {
   for (const property of objectLiteral.properties) {
     const text = sourceFile.text;
     let lineStart = property.getFullStart();
@@ -768,7 +795,10 @@ function findAncestorViteProject(startDir: string): string | null {
   }
 }
 
-function findDescendantViteProjects(startDir: string, maxDepth = MAX_PROJECT_SEARCH_DEPTH): string[] {
+function findDescendantViteProjects(
+  startDir: string,
+  maxDepth = MAX_PROJECT_SEARCH_DEPTH
+): string[] {
   const results = new Set<string>();
   const visited = new Set<string>();
   const queue: Array<{ depth: number; dir: string }> = [{ depth: 0, dir: path.resolve(startDir) }];
@@ -838,7 +868,11 @@ export function detectPackageManager(cwd: string): PackageManager {
       if (name === 'npm') return 'npm';
     }
 
-    if (fs.existsSync(path.join(current, 'bun.lock')) || fs.existsSync(path.join(current, 'bun.lockb'))) return 'bun';
+    if (
+      fs.existsSync(path.join(current, 'bun.lock')) ||
+      fs.existsSync(path.join(current, 'bun.lockb'))
+    )
+      return 'bun';
     if (fs.existsSync(path.join(current, 'pnpm-lock.yaml'))) return 'pnpm';
     if (fs.existsSync(path.join(current, 'yarn.lock'))) return 'yarn';
     if (fs.existsSync(path.join(current, 'package-lock.json'))) return 'npm';
@@ -911,7 +945,10 @@ export function injectViteQRCode(source: string, filePath: string, force = false
           updated = `${source.slice(0, initializer.getEnd() - 1)}, ${pluginCall}${source.slice(initializer.getEnd() - 1)}`;
         }
       } else {
-        const initializerText = source.slice(initializer.getStart(sourceFile), initializer.getEnd());
+        const initializerText = source.slice(
+          initializer.getStart(sourceFile),
+          initializer.getEnd()
+        );
         const replacement = `plugins: [${initializerText}, ${pluginCall}].flat()`;
         updated = `${source.slice(0, pluginsProperty.getStart(sourceFile))}${replacement}${source.slice(pluginsProperty.getEnd())}`;
       }
@@ -926,7 +963,11 @@ export function injectViteQRCode(source: string, filePath: string, force = false
   }
 
   if (binding.importLineNeeded) {
-    updated = prependImport(updated, filePath, buildImportLine(binding.callee, detectConfigFormat(filePath)));
+    updated = prependImport(
+      updated,
+      filePath,
+      buildImportLine(binding.callee, detectConfigFormat(filePath))
+    );
   }
 
   return updated;

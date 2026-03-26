@@ -37,7 +37,11 @@ function buildInstallCmd(pm: PackageManager): string {
   }
 }
 
-async function ensurePackageInstalled(pm: PackageManager, cwd: string, quiet: boolean): Promise<void> {
+async function ensurePackageInstalled(
+  pm: PackageManager,
+  cwd: string,
+  quiet: boolean
+): Promise<void> {
   if (isPackageInstalled(cwd)) {
     if (!quiet) clack.log.info('vite-qr is already installed.');
     return;
@@ -69,7 +73,9 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
         [
           'Multiple Vite projects detected. Run this command from the app you want to modify.',
           '',
-          ...resolution.candidates.map((candidate) => `  - ${path.relative(cwd, candidate) || '.'}`),
+          ...resolution.candidates.map(
+            (candidate) => `  - ${path.relative(cwd, candidate) || '.'}`
+          ),
         ].join('\n')
       );
     } else {

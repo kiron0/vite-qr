@@ -6,11 +6,9 @@
   "main": "dist/require.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.mts",
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
+  "bin": {
+    "vite-qr": "./dist/cli/index.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -62,7 +60,9 @@
   "peerDependencies": {
     "vite": ">=5.0.0"
   },
-  "bin": {
-    "vite-qr": "./dist/cli/index.js"
-  }
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
 }

@@ -61,7 +61,9 @@ function createServer(port = 5173, https = false, resolvedNetworkUrls: string[] 
       off: vi.fn((event: string, handler: (event: string) => void) => {
         watcherHandlers.set(
           event,
-          (watcherHandlers.get(event) ?? []).filter((registeredHandler) => registeredHandler !== handler)
+          (watcherHandlers.get(event) ?? []).filter(
+            (registeredHandler) => registeredHandler !== handler
+          )
         );
       }),
       on: vi.fn((event: string, handler: (event: string) => void) => {
@@ -275,7 +277,10 @@ describe('viteQRCode', () => {
   });
 
   it('falls back to Vite resolved network URLs when adapter discovery finds none', () => {
-    const server = createServer(5173, false, ['http://10.0.0.4:5173/', 'http://192.168.1.20:5173/']);
+    const server = createServer(5173, false, [
+      'http://10.0.0.4:5173/',
+      'http://192.168.1.20:5173/',
+    ]);
     getLocalNetworkUrls.mockReturnValueOnce([]);
     const plugin = viteQRCode({ path: '/preview' });
 
@@ -300,10 +305,9 @@ describe('viteQRCode', () => {
     plugin.configureServer?.(server as never);
     server.httpServer.emit('listening');
 
-    expect(printResolvedQRCodes).toHaveBeenCalledWith(
-      ['http://192.168.1.20:5173/base/'],
-      { protocol: 'http' }
-    );
+    expect(printResolvedQRCodes).toHaveBeenCalledWith(['http://192.168.1.20:5173/base/'], {
+      protocol: 'http',
+    });
     expect(printQRCodes).not.toHaveBeenCalled();
   });
 
@@ -312,10 +316,7 @@ describe('viteQRCode', () => {
       'http://192.168.1.20:5173/base/',
       'http://10.0.0.4:5173/base/',
     ]);
-    getLocalNetworkUrls.mockReturnValueOnce([
-      'http://10.0.0.4:5173',
-      'http://192.168.1.20:5173',
-    ]);
+    getLocalNetworkUrls.mockReturnValueOnce(['http://10.0.0.4:5173', 'http://192.168.1.20:5173']);
     const plugin = viteQRCode({ preferInterface: 'wlan' });
 
     plugin.configureServer?.(server as never);

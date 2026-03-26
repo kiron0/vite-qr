@@ -185,12 +185,7 @@ describe('injectViteQRCode', () => {
   });
 
   it('injects into plain export default object configs', () => {
-    const source = [
-      'export default {',
-      '  server: { host: true },',
-      '};',
-      '',
-    ].join('\n');
+    const source = ['export default {', '  server: { host: true },', '};', ''].join('\n');
 
     const transformed = injectViteQRCode(source, '/tmp/vite.config.ts');
 
@@ -453,12 +448,7 @@ describe('injectViteQRCode', () => {
   });
 
   it('supports CommonJS config exports', () => {
-    const source = [
-      'module.exports = {',
-      '  server: { host: true },',
-      '};',
-      '',
-    ].join('\n');
+    const source = ['module.exports = {', '  server: { host: true },', '};', ''].join('\n');
 
     const transformed = injectViteQRCode(source, '/tmp/vite.config.cjs');
 
@@ -467,12 +457,7 @@ describe('injectViteQRCode', () => {
   });
 
   it('supports exports.default config exports', () => {
-    const source = [
-      'exports.default = {',
-      '  server: { host: true },',
-      '};',
-      '',
-    ].join('\n');
+    const source = ['exports.default = {', '  server: { host: true },', '};', ''].join('\n');
 
     const transformed = injectViteQRCode(source, '/tmp/vite.config.cjs');
 
@@ -497,12 +482,7 @@ describe('injectViteQRCode', () => {
   });
 
   it('supports module.exports.default config exports', () => {
-    const source = [
-      'module.exports.default = {',
-      '  server: { host: true },',
-      '};',
-      '',
-    ].join('\n');
+    const source = ['module.exports.default = {', '  server: { host: true },', '};', ''].join('\n');
 
     const transformed = injectViteQRCode(source, '/tmp/vite.config.cjs');
 
@@ -511,12 +491,7 @@ describe('injectViteQRCode', () => {
   });
 
   it('supports computed exports default config exports', () => {
-    const source = [
-      "exports['default'] = {",
-      '  server: { host: true },',
-      '};',
-      '',
-    ].join('\n');
+    const source = ["exports['default'] = {", '  server: { host: true },', '};', ''].join('\n');
 
     const transformed = injectViteQRCode(source, '/tmp/vite.config.cjs');
 
@@ -525,12 +500,9 @@ describe('injectViteQRCode', () => {
   });
 
   it('supports computed module.exports default config exports', () => {
-    const source = [
-      "module.exports['default'] = {",
-      '  server: { host: true },',
-      '};',
-      '',
-    ].join('\n');
+    const source = ["module.exports['default'] = {", '  server: { host: true },', '};', ''].join(
+      '\n'
+    );
 
     const transformed = injectViteQRCode(source, '/tmp/vite.config.cjs');
 

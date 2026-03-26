@@ -102,7 +102,11 @@ function isReachableAddress(address: string, family: NetworkInterfaceFamily): bo
   }
 
   const lowercaseAddress = normalizedAddress.toLowerCase();
-  return lowercaseAddress !== '::' && lowercaseAddress !== '::1' && !lowercaseAddress.startsWith(IPV6_LINK_LOCAL_PREFIX);
+  return (
+    lowercaseAddress !== '::' &&
+    lowercaseAddress !== '::1' &&
+    !lowercaseAddress.startsWith(IPV6_LINK_LOCAL_PREFIX)
+  );
 }
 
 function shouldIncludeFamily(
@@ -190,16 +194,18 @@ function normalizePrintableUrls(urls: string[], options: NetworkOptions = {}): s
     }
 
     const normalizedHref =
-      parsed.pathname === '/'
-        ? parsed.toString().replace(/\/$/, '')
-        : parsed.toString();
+      parsed.pathname === '/' ? parsed.toString().replace(/\/$/, '') : parsed.toString();
     normalizedUrls.add(normalizedHref);
   }
 
   return Array.from(normalizedUrls).sort((left, right) => left.localeCompare(right));
 }
 
-function printUrls(urls: string[], options: PluginOptions, preferredUrl: string | null = null): string[] {
+function printUrls(
+  urls: string[],
+  options: PluginOptions,
+  preferredUrl: string | null = null
+): string[] {
   const logger = getLogger(options.logger);
   let finalUrls = urls;
 

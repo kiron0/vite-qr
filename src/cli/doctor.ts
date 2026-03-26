@@ -28,10 +28,7 @@ function getConfigCheckRoot(
   return findViteConfigFile(cwd) ? cwd : null;
 }
 
-function checkIsViteProject(
-  resolution: ReturnType<typeof resolveViteProject>,
-  cwd: string
-): Check {
+function checkIsViteProject(resolution: ReturnType<typeof resolveViteProject>, cwd: string): Check {
   if (resolution.projectRoot === null && resolution.candidates.length > 1) {
     return {
       label: 'Vite project',
@@ -74,7 +71,9 @@ function checkViteVersion(cwd: string): Check {
   return {
     label: 'Vite version >= 5',
     pass,
-    detail: version ? `Found: ${version}${!pass ? ' (minimum supported is 5)' : ''}` : 'Could not determine Vite version',
+    detail: version
+      ? `Found: ${version}${!pass ? ' (minimum supported is 5)' : ''}`
+      : 'Could not determine Vite version',
   };
 }
 
