@@ -14,8 +14,21 @@ type PackageJsonData = {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   packageManager?: string;
+  scripts?: Record<string, string>;
   type?: string;
 };
+
+export type DevScriptHostStatus =
+  | 'already-hosted'
+  | 'invalid-package-json'
+  | 'missing-dev-script'
+  | 'unsupported-dev-script'
+  | 'updated';
+
+export interface DevScriptHostUpdate {
+  source: string;
+  status: DevScriptHostStatus;
+}
 
 const MAX_PROJECT_SEARCH_DEPTH = 4;
 const VITE_CONFIG_CANDIDATES = [
@@ -64,16 +77,143 @@ function readPackageJson(packageJsonPath: string): PackageJsonData | null {
   }
 }
 
+function getViteCommandIndex(tokens: string[], startIndex: number): number | null {
+  if (tokens[startIndex] === 'vite') {
+    return startIndex;
+  }
+
+  if ((tokens[startIndex] === 'npx' || tokens[startIndex] === 'bunx') && tokens[startIndex + 1] === 'vite') {
+    return startIndex + 1;
+  }
+
+  if (tokens[startIndex] === 'pnpm') {
+    if (tokens[startIndex + 1] === 'vite') {
+      return startIndex + 1;
+    }
+
+    if (tokens[startIndex + 1] === 'exec' && tokens[startIndex + 2] === 'vite') {
+      return startIndex + 2;
+    }
+  }
+
+  if (tokens[startIndex] === 'yarn' && tokens[startIndex + 1] === 'vite') {
+    return startIndex + 1;
+  }
+
+  if (tokens[startIndex] === 'npm' && tokens[startIndex + 1] === 'exec') {
+    if (tokens[startIndex + 2] === 'vite') {
+      return startIndex + 2;
+    }
+
+    if (tokens[startIndex + 2] === '--' && tokens[startIndex + 3] === 'vite') {
+      return startIndex + 3;
+    }
+  }
+
+  return null;
+}
+
+function addHostToDevScript(devScript: string): string | null {
+  if (/(^|\s)--host(?:=|\s|$)/.test(devScript)) {
+    return devScript;
+  }
+
+  if (/[;&|"'`]/.test(devScript)) {
+    return null;
+  }
+
+  const tokens = devScript.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  let startIndex = 0;
+  if (tokens[startIndex] === 'cross-env' || tokens[startIndex] === 'cross-env-shell') {
+    startIndex += 1;
+  }
+
+  while (startIndex < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[startIndex] ?? '')) {
+    startIndex += 1;
+  }
+
+  const viteIndex = getViteCommandIndex(tokens, startIndex);
+  if (viteIndex === null) {
+    return null;
+  }
+
+  const subcommand = tokens[viteIndex + 1];
+  if (subcommand === 'build' || subcommand === 'preview') {
+    return null;
+  }
+
+  const insertIndex = subcommand === 'dev' ? viteIndex + 2 : viteIndex + 1;
+  tokens.splice(insertIndex, 0, '--host');
+  return tokens.join(' ');
+}
+
+export function ensureDevScriptHasHost(packageJsonSource: string): DevScriptHostUpdate {
+  let parsed: PackageJsonData | null = null;
+
+  try {
+    parsed = JSON.parse(packageJsonSource) as PackageJsonData;
+  } catch {
+    return {
+      source: packageJsonSource,
+      status: 'invalid-package-json',
+    };
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      source: packageJsonSource,
+      status: 'invalid-package-json',
+    };
+  }
+
+  const scripts = parsed.scripts;
+  if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts) || typeof scripts.dev !== 'string') {
+    return {
+      source: packageJsonSource,
+      status: 'missing-dev-script',
+    };
+  }
+
+  const updatedDevScript = addHostToDevScript(scripts.dev);
+  if (updatedDevScript === scripts.dev) {
+    return {
+      source: packageJsonSource,
+      status: 'already-hosted',
+    };
+  }
+
+  if (updatedDevScript === null) {
+    return {
+      source: packageJsonSource,
+      status: 'unsupported-dev-script',
+    };
+  }
+
+  return {
+    source: `${JSON.stringify(
+      {
+        ...parsed,
+        scripts: {
+          ...scripts,
+          dev: updatedDevScript,
+        },
+      },
+      null,
+      2
+    )}\n`,
+    status: 'updated',
+  };
+}
+
 function getDependencyVersionFromPackageJson(
   pkg: PackageJsonData | null,
   dependencyName: string
 ): string | null {
   return pkg?.dependencies?.[dependencyName] ?? pkg?.devDependencies?.[dependencyName] ?? null;
-}
-
-function hasViteDependencyInDir(dir: string): boolean {
-  const pkg = readPackageJson(path.join(dir, 'package.json'));
-  return getDependencyVersionFromPackageJson(pkg, 'vite') !== null;
 }
 
 function hasViteDependencyInDirOrAncestor(dir: string): boolean {
@@ -949,7 +1089,7 @@ export function injectViteQRCode(source: string, filePath: string, force = false
           initializer.getStart(sourceFile),
           initializer.getEnd()
         );
-        const replacement = `plugins: [${initializerText}, ${pluginCall}].flat()`;
+        const replacement = `plugins: [${initializerText}, ${pluginCall}].filter(Boolean)`;
         updated = `${source.slice(0, pluginsProperty.getStart(sourceFile))}${replacement}${source.slice(pluginsProperty.getEnd())}`;
       }
     }

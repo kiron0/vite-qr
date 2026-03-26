@@ -4,11 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { printThanksMessage } from './messages';
 import {
+  ensureDevScriptHasHost,
   type PackageManager,
   detectPackageManager,
   findViteConfigFile,
   hasPackageDependency,
-  hasViteQRCode,
   injectViteQRCode,
   resolveViteProject,
 } from './setup';
@@ -60,6 +60,27 @@ async function ensurePackageInstalled(
   }
 }
 
+function getHostManualStep(
+  status: ReturnType<typeof ensureDevScriptHasHost>['status'] | 'missing-package-json',
+  relPackageJson: string | null
+): string | null {
+  const packageLabel = relPackageJson ?? 'package.json';
+
+  switch (status) {
+    case 'already-hosted':
+    case 'updated':
+      return null;
+    case 'missing-package-json':
+      return 'No package.json was found in the Vite app directory, so add --host to your Vite dev command manually.';
+    case 'invalid-package-json':
+      return `Could not parse ${packageLabel}, so add --host to the dev script manually.`;
+    case 'missing-dev-script':
+      return `No dev script was found in ${packageLabel}, so add --host to your Vite dev command manually.`;
+    case 'unsupported-dev-script':
+      return `Could not update the dev script in ${packageLabel} automatically. Add --host to the Vite command manually.`;
+  }
+}
+
 export async function runInit(opts: InitOptions = {}): Promise<void> {
   const cwd = process.cwd();
   const resolution = resolveViteProject(cwd);
@@ -97,6 +118,17 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
   const pm = detectPackageManager(projectRoot);
   const relConfig = path.relative(cwd, configPath);
   const relProjectRoot = path.relative(cwd, projectRoot);
+  const packageJsonPath = path.join(projectRoot, 'package.json');
+  const packageJsonExists = fs.existsSync(packageJsonPath);
+  const relPackageJson = packageJsonExists ? path.relative(cwd, packageJsonPath) || 'package.json' : null;
+  const packageJsonSource = packageJsonExists ? fs.readFileSync(packageJsonPath, 'utf-8') : null;
+  const devScriptUpdate = packageJsonSource ? ensureDevScriptHasHost(packageJsonSource) : null;
+  const hostManualStep = getHostManualStep(
+    devScriptUpdate?.status ?? 'missing-package-json',
+    relPackageJson
+  );
+  const originalSource = fs.readFileSync(configPath, 'utf-8');
+  const newSource = injectViteQRCode(originalSource, configPath, opts.force ?? false);
 
   if (!opts.quiet) {
     if (relProjectRoot && relProjectRoot !== '.') {
@@ -104,25 +136,6 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     }
     clack.log.info(`Found config: ${relConfig}`);
   }
-
-  if (hasViteQRCode(configPath) && !opts.force) {
-    clack.outro(`viteQRCode() is already present in ${relConfig}. Use --force to re-inject.`);
-    return;
-  }
-
-  if (!opts.skip && !opts.check) {
-    const confirmed = await clack.confirm({
-      message: `Inject viteQRCode() into ${relConfig}?`,
-      initialValue: true,
-    });
-    if (clack.isCancel(confirmed) || !confirmed) {
-      printThanksMessage();
-      process.exit(0);
-    }
-  }
-
-  const originalSource = fs.readFileSync(configPath, 'utf-8');
-  const newSource = injectViteQRCode(originalSource, configPath, opts.force ?? false);
 
   if (newSource === null) {
     clack.outro(
@@ -132,31 +145,86 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     return;
   }
 
+  const configChanged = newSource !== originalSource;
+  const packageJsonChanged = devScriptUpdate?.status === 'updated';
+
+  if (!configChanged && !packageJsonChanged) {
+    const lines = ['vite-qr is already configured in the Vite config.'];
+
+    if (hostManualStep) {
+      lines.push('', hostManualStep);
+    } else {
+      lines.push('', 'The dev script already includes --host.');
+    }
+
+    clack.outro(lines.join('\n'));
+    return;
+  }
+
+  if (!opts.skip && !opts.check) {
+    const plannedChanges: string[] = [];
+    if (configChanged) {
+      plannedChanges.push(`inject viteQRCode() into ${relConfig}`);
+    }
+    if (packageJsonChanged && relPackageJson) {
+      plannedChanges.push(`add --host to the dev script in ${relPackageJson}`);
+    }
+
+    const confirmed = await clack.confirm({
+      message: plannedChanges.length === 1 ? `${plannedChanges[0]}?` : `${plannedChanges.join(' and ')}?`,
+      initialValue: true,
+    });
+    if (clack.isCancel(confirmed) || !confirmed) {
+      printThanksMessage();
+      process.exit(0);
+    }
+  }
+
   if (opts.check) {
-    clack.log.step('--- original ---');
-    console.log(originalSource);
-    clack.log.step('--- new ---');
-    console.log(newSource);
+    if (configChanged) {
+      clack.log.step(`--- ${relConfig} original ---`);
+      console.log(originalSource);
+      clack.log.step(`--- ${relConfig} new ---`);
+      console.log(newSource);
+    }
+    if (packageJsonChanged && packageJsonSource && devScriptUpdate && relPackageJson) {
+      clack.log.step(`--- ${relPackageJson} original ---`);
+      console.log(packageJsonSource);
+      clack.log.step(`--- ${relPackageJson} new ---`);
+      console.log(devScriptUpdate.source);
+    }
     clack.outro('Dry-run complete. No files were changed.');
     return;
   }
 
-  fs.writeFileSync(configPath, newSource, 'utf-8');
+  if (configChanged) {
+    fs.writeFileSync(configPath, newSource, 'utf-8');
+    if (!opts.quiet) {
+      clack.log.success(`Updated ${relConfig}`);
+    }
+  }
 
-  if (!opts.quiet) {
-    clack.log.success(`Updated ${relConfig}`);
+  if (packageJsonChanged && devScriptUpdate) {
+    fs.writeFileSync(packageJsonPath, devScriptUpdate.source, 'utf-8');
+    if (!opts.quiet && relPackageJson) {
+      clack.log.success(`Updated ${relPackageJson}`);
+    }
   }
 
   await ensurePackageInstalled(pm, projectRoot, opts.quiet ?? false);
 
-  clack.outro(
-    [
-      'vite-qr is configured.',
-      '',
-      'Run your dev server as usual:',
-      `  ${pm} run dev`,
-      '',
-      'QR codes will be printed automatically when the server is ready.',
-    ].join('\n')
-  );
+  const outroLines = [
+    'vite-qr is configured.',
+    '',
+    'Run your dev server as usual:',
+    `  ${pm} run dev`,
+    '',
+    'QR codes will be printed automatically when the server is ready.',
+  ];
+
+  if (hostManualStep) {
+    outroLines.push('', hostManualStep);
+  }
+
+  clack.outro(outroLines.join('\n'));
 }

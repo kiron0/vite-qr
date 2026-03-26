@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   detectPackageManager,
+  ensureDevScriptHasHost,
   getPackageDependencyVersion,
   hasViteQRCodeSource,
   hasPackageDependency,
@@ -221,7 +222,7 @@ describe('injectViteQRCode', () => {
 
     const transformed = injectViteQRCode(source, '/tmp/vite.config.ts');
 
-    expect(transformed).toContain('plugins: [plugins, viteQRCode()].flat()');
+    expect(transformed).toContain('plugins: [plugins, viteQRCode()].filter(Boolean)');
     expect(transformed?.match(/plugins:/g)).toHaveLength(1);
   });
 
@@ -236,7 +237,25 @@ describe('injectViteQRCode', () => {
 
     const transformed = injectViteQRCode(source, '/tmp/vite.config.ts');
 
-    expect(transformed).toContain('plugins: [getPlugins(), viteQRCode()].flat()');
+    expect(transformed).toContain('plugins: [getPlugins(), viteQRCode()].filter(Boolean)');
+    expect(transformed?.match(/plugins:/g)).toHaveLength(1);
+  });
+
+  it('wraps filtered plugin expressions with filter(Boolean)', () => {
+    const source = [
+      "import react from '@vitejs/plugin-react';",
+      '',
+      'export default {',
+      '  plugins: [react()].filter(Boolean),',
+      '};',
+      '',
+    ].join('\n');
+
+    const transformed = injectViteQRCode(source, '/tmp/vite.config.ts');
+
+    expect(transformed).toContain(
+      'plugins: [[react()].filter(Boolean), viteQRCode()].filter(Boolean)'
+    );
     expect(transformed?.match(/plugins:/g)).toHaveLength(1);
   });
 
@@ -632,6 +651,68 @@ describe('detectPackageManager', () => {
     fs.writeFileSync(path.join(root, 'bun.lock'), '', 'utf-8');
 
     expect(detectPackageManager(root)).toBe('bun');
+  });
+});
+
+describe('ensureDevScriptHasHost', () => {
+  it('adds --host to a direct vite dev script', () => {
+    const updated = ensureDevScriptHasHost(
+      JSON.stringify({
+        scripts: {
+          dev: 'vite',
+        },
+      })
+    );
+
+    expect(updated.status).toBe('updated');
+    expect(JSON.parse(updated.source)).toEqual({
+      scripts: {
+        dev: 'vite --host',
+      },
+    });
+  });
+
+  it('keeps an existing --host dev script unchanged', () => {
+    const source = JSON.stringify({
+      scripts: {
+        dev: 'vite --host',
+      },
+    });
+
+    const updated = ensureDevScriptHasHost(source);
+
+    expect(updated.status).toBe('already-hosted');
+    expect(updated.source).toBe(source);
+  });
+
+  it('supports filtered env-prefixed vite commands', () => {
+    const updated = ensureDevScriptHasHost(
+      JSON.stringify({
+        scripts: {
+          dev: 'cross-env NODE_ENV=development vite --open',
+        },
+      })
+    );
+
+    expect(updated.status).toBe('updated');
+    expect(JSON.parse(updated.source)).toEqual({
+      scripts: {
+        dev: 'cross-env NODE_ENV=development vite --host --open',
+      },
+    });
+  });
+
+  it('reports unsupported complex dev scripts without rewriting package.json', () => {
+    const source = JSON.stringify({
+      scripts: {
+        dev: 'concurrently "vite" "npm:api"',
+      },
+    });
+
+    const updated = ensureDevScriptHasHost(source);
+
+    expect(updated.status).toBe('unsupported-dev-script');
+    expect(updated.source).toBe(source);
   });
 });
 
