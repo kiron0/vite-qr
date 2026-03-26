@@ -49,6 +49,7 @@ vite-qr doctor
 ```
 
 `init` can run from the app directory, a nested folder inside the app, or a workspace root when exactly one Vite app is found.
+It injects `viteQRCode()` and, when possible, updates the detected `dev` script to include `--host`.
 
 Flags:
 

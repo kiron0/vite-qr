@@ -8,6 +8,7 @@ import {
   type PackageManager,
   detectPackageManager,
   findViteConfigFile,
+  findNearestPackageJsonPath,
   hasPackageDependency,
   injectViteQRCode,
   resolveViteProject,
@@ -115,11 +116,12 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     return;
   }
 
-  const pm = detectPackageManager(projectRoot);
+  const packageJsonPath = findNearestPackageJsonPath(projectRoot);
+  const packageRoot = packageJsonPath ? path.dirname(packageJsonPath) : projectRoot;
+  const pm = detectPackageManager(packageRoot);
   const relConfig = path.relative(cwd, configPath);
   const relProjectRoot = path.relative(cwd, projectRoot);
-  const packageJsonPath = path.join(projectRoot, 'package.json');
-  const packageJsonExists = fs.existsSync(packageJsonPath);
+  const packageJsonExists = packageJsonPath !== null;
   const relPackageJson = packageJsonExists ? path.relative(cwd, packageJsonPath) || 'package.json' : null;
   const packageJsonSource = packageJsonExists ? fs.readFileSync(packageJsonPath, 'utf-8') : null;
   const devScriptUpdate = packageJsonSource ? ensureDevScriptHasHost(packageJsonSource) : null;
@@ -127,6 +129,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     devScriptUpdate?.status ?? 'missing-package-json',
     relPackageJson
   );
+  const packageInstalled = isPackageInstalled(packageRoot);
   const originalSource = fs.readFileSync(configPath, 'utf-8');
   const newSource = injectViteQRCode(originalSource, configPath, opts.force ?? false);
 
@@ -147,8 +150,9 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
 
   const configChanged = newSource !== originalSource;
   const packageJsonChanged = devScriptUpdate?.status === 'updated';
+  const needsInstall = !packageInstalled;
 
-  if (!configChanged && !packageJsonChanged) {
+  if (!configChanged && !packageJsonChanged && !needsInstall) {
     const lines = ['vite-qr is already configured in the Vite config.'];
 
     if (hostManualStep) {
@@ -168,6 +172,9 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     }
     if (packageJsonChanged && relPackageJson) {
       plannedChanges.push(`add --host to the dev script in ${relPackageJson}`);
+    }
+    if (needsInstall) {
+      plannedChanges.push('install vite-qr');
     }
 
     const confirmed = await clack.confirm({
@@ -193,6 +200,10 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
       clack.log.step(`--- ${relPackageJson} new ---`);
       console.log(devScriptUpdate.source);
     }
+    if (needsInstall) {
+      clack.log.step(`--- install ---`);
+      console.log(buildInstallCmd(pm));
+    }
     clack.outro('Dry-run complete. No files were changed.');
     return;
   }
@@ -204,14 +215,14 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     }
   }
 
-  if (packageJsonChanged && devScriptUpdate) {
+  if (packageJsonChanged && devScriptUpdate && packageJsonPath) {
     fs.writeFileSync(packageJsonPath, devScriptUpdate.source, 'utf-8');
     if (!opts.quiet && relPackageJson) {
       clack.log.success(`Updated ${relPackageJson}`);
     }
   }
 
-  await ensurePackageInstalled(pm, projectRoot, opts.quiet ?? false);
+  await ensurePackageInstalled(pm, packageRoot, opts.quiet ?? false);
 
   const outroLines = [
     'vite-qr is configured.',

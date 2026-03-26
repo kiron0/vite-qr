@@ -48,6 +48,27 @@ const IGNORED_DIRS = new Set([
   'dist',
   'node_modules',
 ]);
+const SHELL_OPERATORS = new Set(['&&', '||', ';', '|']);
+const CONCURRENTLY_OPTIONS_WITH_VALUE = new Set([
+  '--default-input-target',
+  '--handle-input',
+  '--max-processes',
+  '--name-separator',
+  '--names',
+  '--prefix',
+  '--prefix-colors',
+  '--prefix-length',
+  '--restart-after',
+  '--restart-tries',
+  '--success',
+  '--timestamp-format',
+  '-c',
+  '-m',
+  '-n',
+  '-p',
+  '-s',
+  '-t',
+]);
 
 type BindingValue = ts.Expression | ts.FunctionDeclaration;
 type ExpressionBindings = Map<string, BindingValue>;
@@ -59,6 +80,12 @@ type ObjectTarget = {
 };
 
 type PluginsProperty = ts.PropertyAssignment | ts.ShorthandPropertyAssignment;
+type CommandToken = {
+  end: number;
+  raw: string;
+  start: number;
+  value: string;
+};
 
 type ViteQRCodeBinding = {
   callee: string;
@@ -113,42 +140,332 @@ function getViteCommandIndex(tokens: string[], startIndex: number): number | nul
   return null;
 }
 
-function addHostToDevScript(devScript: string): string | null {
-  if (/(^|\s)--host(?:=|\s|$)/.test(devScript)) {
-    return devScript;
+function tokenizeCommand(command: string): CommandToken[] | null {
+  const tokens: CommandToken[] = [];
+  let cursor = 0;
+
+  while (cursor < command.length) {
+    while (cursor < command.length && /\s/.test(command[cursor] ?? '')) {
+      cursor += 1;
+    }
+
+    if (cursor >= command.length) {
+      break;
+    }
+
+    const start = cursor;
+    let value = '';
+
+    while (cursor < command.length && !/\s/.test(command[cursor] ?? '')) {
+      const char = command[cursor];
+
+      if (char === '"' || char === "'") {
+        const quote = char;
+        cursor += 1;
+
+        while (cursor < command.length && command[cursor] !== quote) {
+          value += command[cursor];
+          cursor += 1;
+        }
+
+        if (cursor >= command.length) {
+          return null;
+        }
+
+        cursor += 1;
+        continue;
+      }
+
+      value += char;
+      cursor += 1;
+    }
+
+    tokens.push({
+      end: cursor,
+      raw: command.slice(start, cursor),
+      start,
+      value,
+    });
   }
 
-  if (/[;&|"'`]/.test(devScript)) {
-    return null;
+  return tokens;
+}
+
+function getWrappedQuote(rawToken: string): '"' | "'" | null {
+  const first = rawToken[0];
+  const last = rawToken[rawToken.length - 1];
+
+  if ((first === '"' || first === "'") && first === last) {
+    return first;
   }
 
-  const tokens = devScript.trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) {
+  return null;
+}
+
+function isShellOperatorToken(token: CommandToken): boolean {
+  return token.raw === token.value && SHELL_OPERATORS.has(token.value);
+}
+
+function insertCommandToken(
+  command: string,
+  tokens: CommandToken[],
+  insertIndex: number,
+  insertedToken: string
+): string {
+  if (insertIndex >= tokens.length) {
+    const last = tokens.at(-1);
+    if (!last) {
+      return insertedToken;
+    }
+
+    return `${command.slice(0, last.end)} ${insertedToken}${command.slice(last.end)}`;
+  }
+
+  return `${command.slice(0, tokens[insertIndex].start)}${insertedToken} ${command.slice(tokens[insertIndex].start)}`;
+}
+
+function addHostToSimpleCommand(devScript: string, tokens: CommandToken[] | null = null): string | null {
+  const parsedTokens = tokens ?? tokenizeCommand(devScript);
+  if (!parsedTokens || parsedTokens.length === 0) {
     return null;
   }
 
   let startIndex = 0;
-  if (tokens[startIndex] === 'cross-env' || tokens[startIndex] === 'cross-env-shell') {
+  if (parsedTokens[startIndex]?.value === 'cross-env') {
     startIndex += 1;
   }
 
-  while (startIndex < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[startIndex] ?? '')) {
+  while (
+    startIndex < parsedTokens.length &&
+    /^[A-Za-z_][A-Za-z0-9_]*=/.test(parsedTokens[startIndex]?.value ?? '')
+  ) {
     startIndex += 1;
   }
 
-  const viteIndex = getViteCommandIndex(tokens, startIndex);
+  const viteIndex = getViteCommandIndex(
+    parsedTokens.map((token) => token.value),
+    startIndex
+  );
   if (viteIndex === null) {
     return null;
   }
 
-  const subcommand = tokens[viteIndex + 1];
+  if (
+    parsedTokens
+      .slice(viteIndex + 1)
+      .some((token) => token.value === '--host' || token.value.startsWith('--host='))
+  ) {
+    return devScript;
+  }
+
+  const subcommand = parsedTokens[viteIndex + 1]?.value;
   if (subcommand === 'build' || subcommand === 'preview') {
     return null;
   }
 
   const insertIndex = subcommand === 'dev' ? viteIndex + 2 : viteIndex + 1;
-  tokens.splice(insertIndex, 0, '--host');
-  return tokens.join(' ');
+  return insertCommandToken(devScript, parsedTokens, insertIndex, '--host');
+}
+
+function addHostToCrossEnvShellCommand(
+  devScript: string,
+  tokens: CommandToken[]
+): string | null {
+  let startIndex = 1;
+
+  while (
+    startIndex < tokens.length &&
+    /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[startIndex]?.value ?? '')
+  ) {
+    startIndex += 1;
+  }
+
+  if (tokens.length !== startIndex + 1) {
+    return null;
+  }
+
+  const commandToken = tokens[startIndex];
+  if (!commandToken) {
+    return null;
+  }
+
+  const updatedInnerCommand = addHostToSimpleCommand(commandToken.value);
+  if (updatedInnerCommand === null) {
+    return null;
+  }
+
+  const quote = getWrappedQuote(commandToken.raw);
+  if (!quote && /\s/.test(updatedInnerCommand)) {
+    return null;
+  }
+
+  const replacement = quote ? `${quote}${updatedInnerCommand}${quote}` : updatedInnerCommand;
+  return `${devScript.slice(0, commandToken.start)}${replacement}${devScript.slice(commandToken.end)}`;
+}
+
+function addHostToConcurrentlyCommand(devScript: string, tokens: CommandToken[]): string | null {
+  let commandStartIndex = 1;
+
+  while (commandStartIndex < tokens.length) {
+    const token = tokens[commandStartIndex];
+    if (!token) {
+      break;
+    }
+
+    if (token.value === '--') {
+      commandStartIndex += 1;
+      break;
+    }
+
+    if (!token.value.startsWith('-')) {
+      break;
+    }
+
+    const [flag] = token.value.split('=', 1);
+    commandStartIndex += 1;
+
+    if (
+      !token.value.includes('=') &&
+      CONCURRENTLY_OPTIONS_WITH_VALUE.has(flag) &&
+      commandStartIndex < tokens.length
+    ) {
+      commandStartIndex += 1;
+    }
+  }
+
+  let updated = devScript;
+  let matched = false;
+  let changed = false;
+
+  for (let index = tokens.length - 1; index >= commandStartIndex; index -= 1) {
+    const token = tokens[index];
+    if (!token) {
+      continue;
+    }
+
+    const quote = getWrappedQuote(token.raw);
+    if (!quote) {
+      continue;
+    }
+
+    const updatedCommand = addHostToSimpleCommand(token.value);
+    if (updatedCommand === null) {
+      continue;
+    }
+
+    matched = true;
+    if (updatedCommand === token.value) {
+      continue;
+    }
+
+    const replacement = `${quote}${updatedCommand}${quote}`;
+    updated = `${updated.slice(0, token.start)}${replacement}${updated.slice(token.end)}`;
+    changed = true;
+  }
+
+  if (!matched) {
+    return null;
+  }
+
+  return changed ? updated : devScript;
+}
+
+function addHostToCommandGroup(devScript: string, tokens: CommandToken[]): string | null {
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  if (tokens[0]?.value === 'cross-env-shell') {
+    return addHostToCrossEnvShellCommand(devScript, tokens);
+  }
+
+  if (tokens[0]?.value === 'concurrently') {
+    return addHostToConcurrentlyCommand(devScript, tokens);
+  }
+
+  return addHostToSimpleCommand(devScript, tokens);
+}
+
+function addHostToDevScript(devScript: string): string | null {
+  if (/`/.test(devScript)) {
+    return null;
+  }
+
+  const tokens = tokenizeCommand(devScript);
+  if (!tokens || tokens.length === 0) {
+    return null;
+  }
+
+  const groups: Array<{ start: number; end: number }> = [];
+  let groupStart = 0;
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (!token || !isShellOperatorToken(token)) {
+      continue;
+    }
+
+    if (groupStart < index) {
+      groups.push({
+        end: index,
+        start: groupStart,
+      });
+    }
+    groupStart = index + 1;
+  }
+
+  if (groupStart < tokens.length) {
+    groups.push({
+      end: tokens.length,
+      start: groupStart,
+    });
+  }
+
+  let updated = devScript;
+  let matched = false;
+  let changed = false;
+
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    const group = groups[index];
+    if (!group) {
+      continue;
+    }
+
+    const currentTokens = tokenizeCommand(updated);
+    if (!currentTokens) {
+      return null;
+    }
+
+    const groupTokens = currentTokens.slice(group.start, group.end);
+    if (groupTokens.length === 0) {
+      continue;
+    }
+
+    const groupScript = updated.slice(groupTokens[0].start, groupTokens[groupTokens.length - 1].end);
+    const updatedGroupScript = addHostToCommandGroup(groupScript, groupTokens.map((token) => ({
+      ...token,
+      end: token.end - groupTokens[0].start,
+      start: token.start - groupTokens[0].start,
+    })));
+
+    if (updatedGroupScript === null) {
+      continue;
+    }
+
+    matched = true;
+    if (updatedGroupScript === groupScript) {
+      continue;
+    }
+
+    updated = `${updated.slice(0, groupTokens[0].start)}${updatedGroupScript}${updated.slice(groupTokens[groupTokens.length - 1].end)}`;
+    changed = true;
+  }
+
+  if (!matched) {
+    return null;
+  }
+
+  return changed ? updated : devScript;
 }
 
 export function ensureDevScriptHasHost(packageJsonSource: string): DevScriptHostUpdate {
@@ -886,6 +1203,10 @@ function findNearestPackageJson(dir: string): string | null {
     if (parent === current) return null;
     current = parent;
   }
+}
+
+export function findNearestPackageJsonPath(cwd: string): string | null {
+  return findNearestPackageJson(cwd);
 }
 
 export function getPackageDependencyVersion(cwd: string, dependencyName: string): string | null {

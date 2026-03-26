@@ -2,11 +2,12 @@ import { defineConfig, type Options } from 'tsup';
 
 const commonOptions: Pick<
   Options,
-  'minify' | 'platform' | 'target' | 'treeshake' | 'esbuildOptions'
+  'minify' | 'platform' | 'target' | 'treeshake' | 'esbuildOptions' | 'tsconfig'
 > = {
   minify: 'terser',
   platform: 'node',
   target: 'node18',
+  tsconfig: 'tsconfig.build.json',
   treeshake: true,
   esbuildOptions(options) {
     options.drop = ['debugger'];

@@ -8,4 +8,4 @@ const exported = Object.assign(viteQRCode, {
   printQRCodes,
 });
 
-export = exported;
+module.exports = exported;

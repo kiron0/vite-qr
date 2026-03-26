@@ -702,10 +702,91 @@ describe('ensureDevScriptHasHost', () => {
     });
   });
 
-  it('reports unsupported complex dev scripts without rewriting package.json', () => {
+  it('supports cross-env-shell with a quoted vite command', () => {
+    const updated = ensureDevScriptHasHost(
+      JSON.stringify({
+        scripts: {
+          dev: 'cross-env-shell "vite --open"',
+        },
+      })
+    );
+
+    expect(updated.status).toBe('updated');
+    expect(JSON.parse(updated.source)).toEqual({
+      scripts: {
+        dev: 'cross-env-shell "vite --host --open"',
+      },
+    });
+  });
+
+  it('preserves quoted vite arguments that contain spaces', () => {
+    const updated = ensureDevScriptHasHost(
+      JSON.stringify({
+        scripts: {
+          dev: 'vite --open "/foo bar"',
+        },
+      })
+    );
+
+    expect(updated.status).toBe('updated');
+    expect(JSON.parse(updated.source)).toEqual({
+      scripts: {
+        dev: 'vite --host --open "/foo bar"',
+      },
+    });
+  });
+
+  it('updates vite commands inside concurrently', () => {
+    const updated = ensureDevScriptHasHost(
+      JSON.stringify({
+        scripts: {
+          dev: 'concurrently "vite" "npm:api"',
+        },
+      })
+    );
+
+    expect(updated.status).toBe('updated');
+    expect(JSON.parse(updated.source)).toEqual({
+      scripts: {
+        dev: 'concurrently "vite --host" "npm:api"',
+      },
+    });
+  });
+
+  it('keeps already-hosted concurrently commands unchanged', () => {
     const source = JSON.stringify({
       scripts: {
-        dev: 'concurrently "vite" "npm:api"',
+        dev: 'concurrently "vite --host" "npm:api"',
+      },
+    });
+
+    const updated = ensureDevScriptHasHost(source);
+
+    expect(updated.status).toBe('already-hosted');
+    expect(updated.source).toBe(source);
+  });
+
+  it('updates vite commands inside shell chains', () => {
+    const updated = ensureDevScriptHasHost(
+      JSON.stringify({
+        scripts: {
+          dev: 'npm run predev && vite --open',
+        },
+      })
+    );
+
+    expect(updated.status).toBe('updated');
+    expect(JSON.parse(updated.source)).toEqual({
+      scripts: {
+        dev: 'npm run predev && vite --host --open',
+      },
+    });
+  });
+
+  it('reports unsupported backtick-based scripts without rewriting package.json', () => {
+    const source = JSON.stringify({
+      scripts: {
+        dev: 'echo `vite`',
       },
     });
 
