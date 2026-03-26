@@ -1079,6 +1079,38 @@ function getPluginsInitializer(property: PluginsProperty): ts.Expression {
   return ts.isPropertyAssignment(property) ? property.initializer : property.name;
 }
 
+function getPluginsArrayInitializer(
+  expression: ts.Expression,
+  sourceFile: ts.SourceFile
+): { array: ts.ArrayLiteralExpression; filtered: boolean } | null {
+  if (ts.isArrayLiteralExpression(expression)) {
+    return {
+      array: expression,
+      filtered: false,
+    };
+  }
+
+  if (!ts.isCallExpression(expression)) {
+    return null;
+  }
+
+  if (!ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== 'filter') {
+    return null;
+  }
+
+  if (expression.arguments.length !== 1 || expression.arguments[0]?.getText(sourceFile) !== 'Boolean') {
+    return null;
+  }
+
+  const target = expression.expression.expression;
+  return ts.isArrayLiteralExpression(target)
+    ? {
+        array: target,
+        filtered: true,
+      }
+    : null;
+}
+
 function expressionContainsPluginCall(
   expression: ts.Expression,
   callees: string[],
@@ -1399,11 +1431,13 @@ export function injectViteQRCode(source: string, filePath: string, force = false
     if (existingPluginCall && force) {
       updated = `${source.slice(0, existingPluginCall.getStart(sourceFile))}${pluginCall}${source.slice(existingPluginCall.getEnd())}`;
     } else if (!alreadyPresent) {
-      if (ts.isPropertyAssignment(pluginsProperty) && ts.isArrayLiteralExpression(initializer)) {
-        if (initializer.elements.length === 0) {
-          updated = `${source.slice(0, initializer.getStart(sourceFile) + 1)}${pluginCall}${source.slice(initializer.getEnd() - 1)}`;
+      const arrayInitializer = getPluginsArrayInitializer(initializer, sourceFile);
+      if (ts.isPropertyAssignment(pluginsProperty) && arrayInitializer) {
+        const suffix = arrayInitializer.filtered ? '.filter(Boolean)' : '';
+        if (arrayInitializer.array.elements.length === 0) {
+          updated = `${source.slice(0, arrayInitializer.array.getStart(sourceFile))}[${pluginCall}]${suffix}${source.slice(initializer.getEnd())}`;
         } else {
-          updated = `${source.slice(0, initializer.getEnd() - 1)}, ${pluginCall}${source.slice(initializer.getEnd() - 1)}`;
+          updated = `${source.slice(0, arrayInitializer.array.getEnd() - 1)}, ${pluginCall}]${suffix}${source.slice(initializer.getEnd())}`;
         }
       } else {
         const initializerText = source.slice(

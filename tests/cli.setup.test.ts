@@ -253,8 +253,42 @@ describe('injectViteQRCode', () => {
 
     const transformed = injectViteQRCode(source, '/tmp/vite.config.ts');
 
+    expect(transformed).toContain('plugins: [react(), viteQRCode()].filter(Boolean)');
+    expect(transformed?.match(/plugins:/g)).toHaveLength(1);
+  });
+
+  it('appends to a multi-item plugins array without adding filter(Boolean)', () => {
+    const source = [
+      "import react from '@vitejs/plugin-react';",
+      "import legacy from '@vitejs/plugin-legacy';",
+      '',
+      'export default {',
+      '  plugins: [react(), legacy()],',
+      '};',
+      '',
+    ].join('\n');
+
+    const transformed = injectViteQRCode(source, '/tmp/vite.config.ts');
+
+    expect(transformed).toContain('plugins: [react(), legacy(), viteQRCode()]');
+    expect(transformed?.match(/plugins:/g)).toHaveLength(1);
+  });
+
+  it('appends to a multi-item filtered plugins array and keeps filter(Boolean)', () => {
+    const source = [
+      "import react from '@vitejs/plugin-react';",
+      "import legacy from '@vitejs/plugin-legacy';",
+      '',
+      'export default {',
+      '  plugins: [react(), legacy()].filter(Boolean),',
+      '};',
+      '',
+    ].join('\n');
+
+    const transformed = injectViteQRCode(source, '/tmp/vite.config.ts');
+
     expect(transformed).toContain(
-      'plugins: [[react()].filter(Boolean), viteQRCode()].filter(Boolean)'
+      'plugins: [react(), legacy(), viteQRCode()].filter(Boolean)'
     );
     expect(transformed?.match(/plugins:/g)).toHaveLength(1);
   });
