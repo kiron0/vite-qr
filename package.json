@@ -1,6 +1,6 @@
 {
   "name": "vite-qr",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "QR code generator for LAN URLs in Vite dev server",
   "source": "src/index.ts",
   "main": "dist/require.js",
